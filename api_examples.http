@@ -1,0 +1,36 @@
+### Health and summary
+GET http://127.0.0.1:8000/health
+
+### Document stats
+GET http://127.0.0.1:8000/documents
+
+### Retrieve evidence only
+POST http://127.0.0.1:8000/retrieve
+Content-Type: application/json
+
+{
+  "query": "CNN accuracy for Alzheimer's disease MRI classification",
+  "top_k": 5
+}
+
+### Ask grounded question
+POST http://127.0.0.1:8000/ask
+Content-Type: application/json
+
+{
+  "query": "What accuracy values are reported for CNN models?",
+  "top_k": 5
+}
+
+### Compare two papers
+POST http://127.0.0.1:8000/contradict
+Content-Type: application/json
+
+{
+  "doc_id_a": "first_document_id",
+  "doc_id_b": "second_document_id",
+  "topic": "reported model accuracy"
+}
+
+### Rebuild index
+POST http://127.0.0.1:8000/ingest?reset=true
