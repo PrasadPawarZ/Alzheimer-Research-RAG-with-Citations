@@ -18,6 +18,21 @@ This repository is prepared for private recruiter review, but `.env`, raw resear
 - If private test papers or keys need to be shared, they should be shared separately and only when redistribution is permitted.
 - If the repository is ever made public, it remains safe because secrets and third-party documents are not in Git history.
 
+## Research Papers Used Locally
+
+The following paper titles were used during local testing. I did not commit the PDF files, but these titles can be searched and downloaded from their original publisher or source pages where available:
+
+- A novel CNN architecture for accurate early detection and classification of Alzheimer's disease using MRI data
+- Accurate Detection of Alzheimer's Disease Using Lightweight Deep Learning Model on MRI Data
+- Advanced interpretable diagnosis of Alzheimer's disease using SECNN-RF framework with explainable AI
+- Advancements in deep learning for early diagnosis of Alzheimer's disease using multimodal neuroimaging challenges and future directions
+- Alzheimer's Disease Detection Through Whole-Brain 3D-CNN MRI
+- Classifying and diagnosing Alzheimer's disease with deep learning using 6735 brain MRI Images
+- Deep Multi-Branch CNN Architecture for Early Alzheimer's Detection from Brain MRIs
+- Deep learning techniques for Alzheimer's disease detection in 3D imaging A systematic review
+- Intelligent Diagnosis of Alzheimer's Disease Based on Machine Learning
+- MRI-Driven Alzheimer's Disease Diagnosis Using Deep Network Fusion and Optimal Selection of Feature
+
 ## My Role in This Submission
 
 This is an AI-assisted build, but it was not submitted blindly. My work was focused on turning the assignment brief into a working, reviewable product:
