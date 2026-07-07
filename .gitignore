@@ -1,0 +1,21 @@
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local research documents and generated vector database.
+papers/*
+!papers/.gitkeep
+chroma_db/*
+!chroma_db/.gitkeep
+
+# OS/editor files.
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

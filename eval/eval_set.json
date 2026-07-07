@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "question": "What accuracy did the multi-branch CNN achieve for three-class Alzheimer's classification?",
+    "expected_doc_id": "paper2_multibranch_cnn",
+    "notes": "Should retrieve the ~99.05% three-class accuracy figure."
+  },
+  {
+    "id": 2,
+    "question": "How many brain MRI images were used in the deep CNN study with InceptionResNetV2 and Xception?",
+    "expected_doc_id": "paper6_6735_images",
+    "notes": "Ground truth: 6735 images."
+  },
+  {
+    "id": 3,
+    "question": "What is the SECNN-RF framework and what does it combine?",
+    "expected_doc_id": "paper7_secnn_rf",
+    "notes": "Should mention CNN feature extraction + Random Forest + explainability."
+  },
+  {
+    "id": 4,
+    "question": "How does the whole-brain 3D-CNN approach differ from 2D slice-based CNN approaches?",
+    "expected_doc_id": "paper4_3dcnn_wholebrain",
+    "notes": "Tests 3D vs 2D comparison retrieval."
+  },
+  {
+    "id": 5,
+    "question": "What classical machine learning models were compared against deep learning for Alzheimer's diagnosis?",
+    "expected_doc_id": "paper10_classical_ml",
+    "notes": "Expect Random Forest, XGBoost, SVM mentioned."
+  },
+  {
+    "id": 6,
+    "question": "What feature fusion or feature selection techniques were used for MRI-based Alzheimer's diagnosis?",
+    "expected_doc_id": "paper5_feature_fusion",
+    "notes": "Tests retrieval of fusion/feature-selection methodology chunk."
+  },
+  {
+    "id": 7,
+    "question": "What are the main limitations identified in deep learning approaches for 3D Alzheimer's imaging, according to the systematic review?",
+    "expected_doc_id": "paper8_systematic_review",
+    "notes": "Review paper should surface limitations/future-work chunks."
+  },
+  {
+    "id": 8,
+    "question": "How does a lightweight deep learning model compare to heavier CNN architectures for Alzheimer's detection?",
+    "expected_doc_id": "paper3_lightweight",
+    "notes": "Tests lightweight-vs-heavy comparison retrieval."
+  },
+  {
+    "id": 9,
+    "question": "What imaging modalities beyond MRI are discussed for multimodal Alzheimer's diagnosis?",
+    "expected_doc_id": "paper9_multimodal",
+    "notes": "Expect PET / multimodal neuroimaging mention."
+  },
+  {
+    "id": 10,
+    "question": "What is the capital of France?",
+    "expected_doc_id": null,
+    "notes": "Adversarial / out-of-scope question. Correct system behavior is to say the documents do not cover this, NOT to answer from general knowledge."
+  }
+]
