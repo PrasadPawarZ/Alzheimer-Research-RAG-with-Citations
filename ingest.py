@@ -1,109 +1,100 @@
-"""
-Ingestion pipeline
-===================
-Reads every .pdf / .txt file from PAPERS_DIR, extracts text page-by-page,
-splits it into overlapping chunks, embeds the chunks with a local
-sentence-transformers model, and upserts everything into a persistent
-Chroma collection.
-
-Run:
-    python ingest.py
-    python ingest.py --reset      # wipe and rebuild the collection
-"""
+"""Ingestion pipeline for local PDF/TXT research documents."""
 import argparse
 import hashlib
 import os
 import re
-import sys
+from typing import Dict, Iterable, List, Tuple
 
 import chromadb
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
 import config
+from text_utils import (
+    chunk_text,
+    clean_title_from_filename,
+    count_tokens,
+    extract_year,
+    normalize_whitespace,
+)
 
 
-def extract_pages(filepath: str):
+def supported_files(papers_dir: str) -> List[str]:
+    if not os.path.isdir(papers_dir):
+        return []
+    return sorted(
+        fname
+        for fname in os.listdir(papers_dir)
+        if fname.lower().endswith((".pdf", ".txt"))
+    )
+
+
+def extract_pages(filepath: str) -> List[Tuple[int, str]]:
     """Return a list of (page_number, text) tuples, 1-indexed."""
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         reader = PdfReader(filepath)
         pages = []
-        for i, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
-            text = re.sub(r"\s+", " ", text).strip()
+        for index, page in enumerate(reader.pages, start=1):
+            text = normalize_whitespace(page.extract_text() or "")
             if text:
-                pages.append((i, text))
+                pages.append((index, text))
         return pages
-    elif ext == ".txt":
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read()
-        text = re.sub(r"\s+", " ", text).strip()
+
+    if ext == ".txt":
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as handle:
+            text = normalize_whitespace(handle.read())
         return [(1, text)] if text else []
-    else:
-        return []
 
-
-def chunk_text(text: str, chunk_size: int, overlap: int):
-    """
-    Sliding-window chunker over sentences.
-
-    Why this approach (see README for full rationale):
-    - Research papers pack a lot of meaning per sentence (methods, results,
-      numbers). Splitting mid-sentence risks cutting a claim in half and
-      handing the LLM a mutilated fact.
-    - So we split on sentence boundaries first, then greedily pack sentences
-      into ~chunk_size-character windows, carrying the last `overlap`
-      characters of context into the next chunk so a fact that spans a
-      chunk boundary in the source text still appears whole somewhere.
-    """
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    chunks = []
-    current = ""
-    for sent in sentences:
-        if len(current) + len(sent) + 1 <= chunk_size:
-            current = f"{current} {sent}".strip()
-        else:
-            if current:
-                chunks.append(current)
-            # start new chunk, carrying overlap from the tail of the previous one
-            tail = current[-overlap:] if overlap and current else ""
-            current = f"{tail} {sent}".strip()
-    if current:
-        chunks.append(current)
-    return chunks
+    return []
 
 
 def build_chunk_id(source: str, page: int, idx: int) -> str:
     raw = f"{source}::p{page}::c{idx}"
-    return hashlib.md5(raw.encode()).hexdigest()
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
-def ingest(papers_dir: str, chroma_dir: str, reset: bool = False):
-    if not os.path.isdir(papers_dir):
-        print(f"Papers directory '{papers_dir}' does not exist.")
-        sys.exit(1)
+def document_id(filename: str) -> str:
+    stem = os.path.splitext(filename)[0]
+    stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_").lower()
+    return stem or hashlib.md5(filename.encode("utf-8")).hexdigest()
 
-    files = [
-        f for f in sorted(os.listdir(papers_dir))
-        if f.lower().endswith((".pdf", ".txt"))
-    ]
+
+def infer_document_metadata(filename: str, pages: Iterable[Tuple[int, str]]) -> Dict[str, str]:
+    page_list = list(pages)
+    first_page = page_list[0][1] if page_list else ""
+    return {
+        "source": filename,
+        "doc_id": document_id(filename),
+        "title": clean_title_from_filename(filename),
+        "year": extract_year(filename, first_page),
+        "file_type": os.path.splitext(filename)[1].lower().lstrip("."),
+    }
+
+
+def reset_collection(chroma_dir: str = config.CHROMA_DIR) -> None:
+    client = chromadb.PersistentClient(path=chroma_dir)
+    try:
+        client.delete_collection(config.COLLECTION_NAME)
+    except Exception:
+        pass
+
+
+def ingest(papers_dir: str = config.PAPERS_DIR, chroma_dir: str = config.CHROMA_DIR, reset: bool = False) -> int:
+    os.makedirs(papers_dir, exist_ok=True)
+    os.makedirs(chroma_dir, exist_ok=True)
+
+    files = supported_files(papers_dir)
     if not files:
-        print(f"No .pdf or .txt files found in '{papers_dir}'.")
-        sys.exit(1)
+        print(f"No PDF/TXT files found in {papers_dir}.")
+        return 0
 
-    print(f"Found {len(files)} document(s): {files}")
-    print(f"Loading embedding model '{config.EMBEDDING_MODEL}' ...")
     embedder = SentenceTransformer(config.EMBEDDING_MODEL)
-
     client = chromadb.PersistentClient(path=chroma_dir)
 
     if reset:
-        try:
-            client.delete_collection(config.COLLECTION_NAME)
-            print("Existing collection wiped.")
-        except Exception:
-            pass
+        reset_collection(chroma_dir)
+        print("Existing collection wiped.")
 
     collection = client.get_or_create_collection(
         name=config.COLLECTION_NAME,
@@ -111,42 +102,55 @@ def ingest(papers_dir: str, chroma_dir: str, reset: bool = False):
     )
 
     total_chunks = 0
-    for fname in files:
-        fpath = os.path.join(papers_dir, fname)
-        pages = extract_pages(fpath)
+    for filename in files:
+        filepath = os.path.join(papers_dir, filename)
+        pages = extract_pages(filepath)
         if not pages:
-            print(f"  [skip] {fname}: no extractable text")
+            print(f"  [skip] {filename}: no extractable text")
             continue
 
+        base_meta = infer_document_metadata(filename, pages)
         doc_chunks, doc_metas, doc_ids = [], [], []
+
         for page_num, page_text in pages:
-            for idx, chunk in enumerate(
-                chunk_text(page_text, config.CHUNK_SIZE_CHARS, config.CHUNK_OVERLAP_CHARS)
-            ):
-                cid = build_chunk_id(fname, page_num, idx)
+            chunks = chunk_text(
+                page_text,
+                config.CHUNK_SIZE_TOKENS,
+                config.CHUNK_OVERLAP_TOKENS,
+            )
+            for chunk_index, chunk in enumerate(chunks):
                 doc_chunks.append(chunk)
                 doc_metas.append({
-                    "source": fname,
-                    "doc_id": os.path.splitext(fname)[0],
+                    **base_meta,
                     "page": page_num,
-                    "chunk_index": idx,
+                    "chunk_index": chunk_index,
+                    "chunk_tokens": count_tokens(chunk),
                 })
-                doc_ids.append(cid)
+                doc_ids.append(build_chunk_id(filename, page_num, chunk_index))
 
         if not doc_chunks:
+            print(f"  [skip] {filename}: text existed but no chunks were produced")
             continue
 
-        embeddings = embedder.encode(doc_chunks, show_progress_bar=False, normalize_embeddings=True).tolist()
+        embeddings = embedder.encode(
+            doc_chunks,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        ).tolist()
         collection.upsert(
             ids=doc_ids,
             embeddings=embeddings,
             documents=doc_chunks,
             metadatas=doc_metas,
         )
-        print(f"  [ok] {fname}: {len(doc_chunks)} chunks across {len(pages)} pages")
+        print(f"  [ok] {filename}: {len(doc_chunks)} chunks across {len(pages)} pages")
         total_chunks += len(doc_chunks)
 
-    print(f"\nDone. {total_chunks} chunks stored in Chroma collection '{config.COLLECTION_NAME}' at '{chroma_dir}'.")
+    print(
+        f"\nDone. {total_chunks} chunks stored in Chroma collection "
+        f"'{config.COLLECTION_NAME}' at '{chroma_dir}'."
+    )
+    return total_chunks
 
 
 if __name__ == "__main__":
