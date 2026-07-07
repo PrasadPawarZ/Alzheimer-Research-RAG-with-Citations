@@ -1,11 +1,13 @@
 """Ingestion pipeline for local PDF/TXT research documents."""
 import argparse
 import hashlib
+import logging
 import os
 import re
 from typing import Dict, Iterable, List, Tuple
 
 import chromadb
+from chromadb.config import Settings
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
@@ -17,6 +19,9 @@ from text_utils import (
     extract_year,
     normalize_whitespace,
 )
+
+CHROMA_SETTINGS = Settings(anonymized_telemetry=False)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
 def supported_files(papers_dir: str) -> List[str]:
@@ -73,7 +78,7 @@ def infer_document_metadata(filename: str, pages: Iterable[Tuple[int, str]]) -> 
 
 
 def reset_collection(chroma_dir: str = config.CHROMA_DIR) -> None:
-    client = chromadb.PersistentClient(path=chroma_dir)
+    client = chromadb.PersistentClient(path=chroma_dir, settings=CHROMA_SETTINGS)
     try:
         client.delete_collection(config.COLLECTION_NAME)
     except Exception:
@@ -90,7 +95,7 @@ def ingest(papers_dir: str = config.PAPERS_DIR, chroma_dir: str = config.CHROMA_
         return 0
 
     embedder = SentenceTransformer(config.EMBEDDING_MODEL)
-    client = chromadb.PersistentClient(path=chroma_dir)
+    client = chromadb.PersistentClient(path=chroma_dir, settings=CHROMA_SETTINGS)
 
     if reset:
         reset_collection(chroma_dir)

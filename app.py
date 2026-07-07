@@ -3,7 +3,7 @@ import os
 import shutil
 from typing import List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
 import config
@@ -75,6 +75,29 @@ class IngestResponse(BaseModel):
 
 def _citations(items):
     return [CitationOut(**item.__dict__) for item in items]
+
+
+@app.get("/")
+def root():
+    return {
+        "name": "Alzheimer's Research RAG API",
+        "status": "running",
+        "docs": "http://127.0.0.1:8000/docs",
+        "health": "/health",
+        "endpoints": {
+            "ask": "POST /ask",
+            "retrieve": "POST /retrieve",
+            "contradict": "POST /contradict",
+            "documents": "GET /documents",
+            "stats": "GET /stats",
+            "ingest": "POST /ingest?reset=true",
+        },
+    }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/health")

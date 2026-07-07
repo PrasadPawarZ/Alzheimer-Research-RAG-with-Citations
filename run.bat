@@ -113,7 +113,7 @@ if errorlevel 1 goto FAIL
 echo.
 echo Starting FastAPI server...
 echo Open http://127.0.0.1:8000/docs for API docs.
-"%PY%" -m uvicorn app:app --reload --port 8000
+"%PY%" -m uvicorn app:app --host 127.0.0.1 --port 8000
 goto END_PAUSE
 
 :RUN_INGEST

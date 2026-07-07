@@ -79,6 +79,7 @@ def _call_gemini(system_prompt: str, user_prompt: str, temperature: float, max_t
             temperature=temperature,
             max_output_tokens=max_tokens,
         ),
+        request_options={"timeout": config.LLM_TIMEOUT_SECONDS},
     )
     return (resp.text or "").strip()
 
@@ -89,7 +90,7 @@ def _call_groq(system_prompt: str, user_prompt: str, temperature: float, max_tok
     if _is_placeholder(config.GROQ_API_KEY):
         raise RuntimeError("GROQ_API_KEY is not set.")
 
-    client = Groq(api_key=config.GROQ_API_KEY)
+    client = Groq(api_key=config.GROQ_API_KEY, timeout=config.LLM_TIMEOUT_SECONDS)
     resp = client.chat.completions.create(
         model=config.GROQ_MODEL,
         temperature=temperature,

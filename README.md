@@ -59,6 +59,7 @@ I used AI tools as engineering assistants for scaffolding, refactoring, and docu
 - Answers questions through `/ask` with source, page, chunk, snippet, and confidence.
 - Supports `/contradict` to compare two documents on a topic.
 - Supports multilingual queries through language detection and optional translation at the boundary.
+- Handles common Hinglish/Romanized Hindi queries such as `alzaimer kya hai?` without waiting for an LLM translation call.
 - Refuses or flags weak answers instead of silently hallucinating.
 - Includes a Streamlit dashboard so reviewers can try the app without Postman.
 - Falls back to extractive answers if no Gemini/Groq key is configured.
@@ -71,7 +72,7 @@ I used AI tools as engineering assistants for scaffolding, refactoring, and docu
 | Explain chunking strategy | Documented in the Chunking Strategy section below. |
 | `/ask` with citations | `POST /ask` returns answer, coverage status, confidence, source file, page, chunk ID, and snippet citations. |
 | `/contradict` between two documents | `POST /contradict` compares two document IDs on a supplied topic using retrieved evidence. |
-| Multilingual query flow | `translate.py` detects language and optionally translates at the retrieval boundary when an LLM key is available. |
+| Multilingual query flow | `translate.py` detects language, handles common Hinglish/Romanized Hindi locally, and optionally translates other non-English queries when an LLM key is available. |
 | Simple UI | `streamlit_app.py` provides an interactive reviewer dashboard. |
 | No silent hallucination | Low evidence returns `covered=false` or `needs_human_review=true`; invalid citation output falls back to extractive evidence. |
 | Stretch: confidence score | Retrieval-based confidence score plus `CONFIDENCE_THRESHOLD`. |
@@ -334,15 +335,17 @@ I used multiple guardrails:
 
 ## Multilingual Flow
 
-The multilingual boundary is intentionally simple for a 24-hour build:
+The multilingual boundary is intentionally simple and demo-safe:
 
-1. Detect query language with `langdetect`.
-2. If an LLM key exists, translate non-English queries to English before retrieval.
-3. Retrieve from the English-indexed document chunks.
-4. Translate the final answer back to the original language.
-5. Keep citations tied to the original source snippets.
+1. Detect native-script Hindi/Marathi with a small Unicode-script heuristic.
+2. Detect common Hinglish/Romanized Hindi terms like `kya`, `hai`, and `hota`.
+3. Normalize simple Hinglish questions locally, for example `alzaimer kya hai?` becomes `what is alzheimer?`.
+4. If an LLM key exists, translate other non-English queries to English before retrieval.
+5. Retrieve from the English-indexed document chunks.
+6. Translate the final answer back to the original language when possible.
+7. Keep citations tied to the original source snippets.
 
-If no LLM key exists, the app still runs but avoids translation and uses extractive retrieval.
+If no LLM key exists or a provider is rate-limited, the app still runs in extractive mode and returns grounded evidence instead of getting stuck.
 
 ## Streamlit UI
 

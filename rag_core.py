@@ -1,8 +1,10 @@
 """Core retrieval-augmented generation logic."""
 from dataclasses import dataclass, field
+import logging
 from typing import Dict, List, Optional
 
 import chromadb
+from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
 import config
@@ -12,21 +14,42 @@ from text_utils import keyword_overlap_score, validate_citation_numbers
 NOT_COVERED_SENTINEL = "NOT_COVERED_BY_DOCUMENTS"
 
 _embedder: Optional[SentenceTransformer] = None
+_embedder_failed = False
+_embedder_error = ""
 _client = None
 _collection = None
+CHROMA_SETTINGS = Settings(anonymized_telemetry=False)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
-def _get_embedder():
-    global _embedder
+def _get_embedder() -> Optional[SentenceTransformer]:
+    global _embedder, _embedder_failed, _embedder_error
+    if _embedder_failed:
+        return None
     if _embedder is None:
-        _embedder = SentenceTransformer(config.EMBEDDING_MODEL)
+        try:
+            # Query-time model loading should not block the UI with network retries.
+            # Ingestion can still download the model; retrieval falls back to keyword
+            # search if the local model cache is unavailable.
+            _embedder = SentenceTransformer(config.EMBEDDING_MODEL, local_files_only=True)
+        except TypeError:
+            try:
+                _embedder = SentenceTransformer(config.EMBEDDING_MODEL)
+            except Exception as exc:
+                _embedder_failed = True
+                _embedder_error = str(exc)
+                return None
+        except Exception as exc:
+            _embedder_failed = True
+            _embedder_error = str(exc)
+            return None
     return _embedder
 
 
 def _get_collection():
     global _client, _collection
     if _collection is None:
-        _client = chromadb.PersistentClient(path=config.CHROMA_DIR)
+        _client = chromadb.PersistentClient(path=config.CHROMA_DIR, settings=CHROMA_SETTINGS)
         _collection = _client.get_or_create_collection(
             name=config.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
@@ -133,6 +156,9 @@ def database_summary() -> Dict:
         "chunks": sum(doc["chunks"] for doc in docs),
         "pages": sum(doc["page_count"] for doc in docs),
         "provider": llm_client.provider_status().__dict__,
+        "embedding_model": config.EMBEDDING_MODEL,
+        "embedding_fallback": _embedder_failed,
+        "embedding_error": _embedder_error,
         "confidence_threshold": config.CONFIDENCE_THRESHOLD,
         "chunk_size_tokens": config.CHUNK_SIZE_TOKENS,
         "chunk_overlap_tokens": config.CHUNK_OVERLAP_TOKENS,
@@ -140,7 +166,7 @@ def database_summary() -> Dict:
 
 
 def clear_vector_store() -> None:
-    client = chromadb.PersistentClient(path=config.CHROMA_DIR)
+    client = chromadb.PersistentClient(path=config.CHROMA_DIR, settings=CHROMA_SETTINGS)
     try:
         client.delete_collection(config.COLLECTION_NAME)
     except Exception:
@@ -164,33 +190,34 @@ def retrieve(query_en: str, top_k: int = None, doc_id_filter: Optional[str] = No
         for row in all_rows
     }
 
-    col = _get_collection()
     embedder = _get_embedder()
-    query_emb = embedder.encode([query_en], normalize_embeddings=True).tolist()
-    where = {"doc_id": doc_id_filter} if doc_id_filter else None
-    vector_results = col.query(
-        query_embeddings=query_emb,
-        n_results=candidate_k,
-        where=where,
-        include=["documents", "metadatas", "distances"],
-    )
-
-    for row_id, document, metadata, distance in zip(
-        vector_results.get("ids", [[]])[0],
-        vector_results.get("documents", [[]])[0],
-        vector_results.get("metadatas", [[]])[0],
-        vector_results.get("distances", [[]])[0],
-    ):
-        item = by_id.setdefault(
-            row_id,
-            {
-                "id": row_id,
-                "document": document,
-                "metadata": metadata,
-                "keyword_score": keyword_overlap_score(query_en, document),
-            },
+    if embedder is not None:
+        col = _get_collection()
+        query_emb = embedder.encode([query_en], normalize_embeddings=True).tolist()
+        where = {"doc_id": doc_id_filter} if doc_id_filter else None
+        vector_results = col.query(
+            query_embeddings=query_emb,
+            n_results=candidate_k,
+            where=where,
+            include=["documents", "metadatas", "distances"],
         )
-        item["vector_similarity"] = max(0.0, min(1.0, 1 - distance))
+
+        for row_id, document, metadata, distance in zip(
+            vector_results.get("ids", [[]])[0],
+            vector_results.get("documents", [[]])[0],
+            vector_results.get("metadatas", [[]])[0],
+            vector_results.get("distances", [[]])[0],
+        ):
+            item = by_id.setdefault(
+                row_id,
+                {
+                    "id": row_id,
+                    "document": document,
+                    "metadata": metadata,
+                    "keyword_score": keyword_overlap_score(query_en, document),
+                },
+            )
+            item["vector_similarity"] = max(0.0, min(1.0, 1 - distance))
 
     ranked = []
     for item in by_id.values():
