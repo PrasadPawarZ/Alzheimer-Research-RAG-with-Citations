@@ -1,7 +1,3 @@
-> THESE README WAS RECREATED BY AI.
-
-# Potens AI/ML Internship Take-Home
-
 Document Q&A with citations over Alzheimer disease research papers.
 
 This project is my submission for the Potens AI/ML internship assignment, Q1: Document Q&A with Citations. I chose research papers around Alzheimer's disease detection because the domain is technical enough to make retrieval quality, citation discipline, and hallucination control matter.
